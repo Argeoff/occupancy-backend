@@ -4,40 +4,57 @@ const Database = require("better-sqlite3");
 
 const app = express();
 
+// ======================
+// Middleware
+// ======================
 app.use(cors());
 app.options("*", cors());
 app.use(express.json());
 
-// =========================
-// 🗄️ SQLITE SETUP
-// =========================
+// ======================
+// SQLite setup
+// ======================
 const db = new Database("database.db");
 
-// Create table if not exists
-db.run(`
+// Create table
+db.prepare(`
   CREATE TABLE IF NOT EXISTS occupancy (
     id INTEGER PRIMARY KEY,
     occupied INTEGER,
     updatedAt TEXT
   )
-`);
+`).run();
 
-// Ensure one row exists
-db.run(`
+// Ensure single row exists
+db.prepare(`
   INSERT OR IGNORE INTO occupancy (id, occupied, updatedAt)
   VALUES (1, 0, NULL)
-`);
+`).run();
 
-// =========================
-// 🧪 TEST ENDPOINT
-// =========================
+// ======================
+// Test endpoint
+// ======================
 app.get("/test", (req, res) => {
   res.json({ status: "ok" });
 });
 
-// =========================
-// 📥 UPDATE OCCUPANCY
-// =========================
+// ======================
+// GET occupancy
+// ======================
+app.get("/occupancy", (req, res) => {
+  const row = db.prepare(`
+    SELECT * FROM occupancy WHERE id = 1
+  `).get();
+
+  res.json({
+    occupied: row.occupied === 1,
+    updatedAt: row.updatedAt
+  });
+});
+
+// ======================
+// POST occupancy update
+// ======================
 app.post("/occupancy", (req, res) => {
   if (typeof req.body.occupied !== "boolean") {
     return res.status(400).json({ error: "occupied must be boolean" });
@@ -46,41 +63,23 @@ app.post("/occupancy", (req, res) => {
   const occupied = req.body.occupied ? 1 : 0;
   const updatedAt = new Date().toISOString();
 
-  db.run(
-    `UPDATE occupancy SET occupied = ?, updatedAt = ? WHERE id = 1`,
-    [occupied, updatedAt],
-    function () {
-      const state = {
-        occupied: !!occupied,
-        updatedAt
-      };
+  db.prepare(`
+    UPDATE occupancy
+    SET occupied = ?, updatedAt = ?
+    WHERE id = 1
+  `).run(occupied, updatedAt);
 
-      console.log("Updated:", state);
+  console.log("Updated:", { occupied: !!occupied, updatedAt });
 
-      res.json({ success: true, state });
-    }
-  );
-});
-
-// =========================
-// 📤 GET OCCUPANCY
-// =========================
-app.get("/occupancy", (req, res) => {
-  db.get(`SELECT * FROM occupancy WHERE id = 1`, (err, row) => {
-    if (err) {
-      return res.status(500).json({ error: "DB error" });
-    }
-
-    res.json({
-      occupied: row.occupied === 1,
-      updatedAt: row.updatedAt
-    });
+  res.json({
+    success: true,
+    state: { occupied: !!occupied, updatedAt }
   });
 });
 
-// =========================
-// 🚀 START SERVER
-// =========================
+// ======================
+// Start server
+// ======================
 app.listen(process.env.PORT || 3000, () => {
   console.log("Server running");
 });
