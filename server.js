@@ -1,6 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-const sqlite3 = require("sqlite3").verbose();
+const Database = require("better-sqlite3");
 
 const app = express();
 
@@ -11,7 +11,7 @@ app.use(express.json());
 // =========================
 // 🗄️ SQLITE SETUP
 // =========================
-const db = new sqlite3.Database("./database.db");
+const db = new Database("database.db");
 
 // Create table if not exists
 db.run(`
