@@ -1,37 +1,86 @@
 const express = require("express");
-const app = express();
 const cors = require("cors");
+const sqlite3 = require("sqlite3").verbose();
+
+const app = express();
 
 app.use(cors());
-app.options("*", cors()); // handles preflight
+app.options("*", cors());
 app.use(express.json());
 
-// current room state
-let state = {
- occupied: false,
- updatedAt: null
-};
+// =========================
+// 🗄️ SQLITE SETUP
+// =========================
+const db = new sqlite3.Database("./database.db");
 
-// test endpoint (for checking network)
+// Create table if not exists
+db.run(`
+  CREATE TABLE IF NOT EXISTS occupancy (
+    id INTEGER PRIMARY KEY,
+    occupied INTEGER,
+    updatedAt TEXT
+  )
+`);
+
+// Ensure one row exists
+db.run(`
+  INSERT OR IGNORE INTO occupancy (id, occupied, updatedAt)
+  VALUES (1, 0, NULL)
+`);
+
+// =========================
+// 🧪 TEST ENDPOINT
+// =========================
 app.get("/test", (req, res) => {
- res.json({ status: "ok" });
+  res.json({ status: "ok" });
 });
 
-// Home Assistant sends updates here
+// =========================
+// 📥 UPDATE OCCUPANCY
+// =========================
 app.post("/occupancy", (req, res) => {
- state.occupied = req.body.occupied;
- state.updatedAt = new Date().toISOString();
+  if (typeof req.body.occupied !== "boolean") {
+    return res.status(400).json({ error: "occupied must be boolean" });
+  }
 
- console.log("Updated:", state);
+  const occupied = req.body.occupied ? 1 : 0;
+  const updatedAt = new Date().toISOString();
 
- res.json({ success: true, state });
+  db.run(
+    `UPDATE occupancy SET occupied = ?, updatedAt = ? WHERE id = 1`,
+    [occupied, updatedAt],
+    function () {
+      const state = {
+        occupied: !!occupied,
+        updatedAt
+      };
+
+      console.log("Updated:", state);
+
+      res.json({ success: true, state });
+    }
+  );
 });
 
-// frontend reads here
+// =========================
+// 📤 GET OCCUPANCY
+// =========================
 app.get("/occupancy", (req, res) => {
- res.json(state);
+  db.get(`SELECT * FROM occupancy WHERE id = 1`, (err, row) => {
+    if (err) {
+      return res.status(500).json({ error: "DB error" });
+    }
+
+    res.json({
+      occupied: row.occupied === 1,
+      updatedAt: row.updatedAt
+    });
+  });
 });
 
+// =========================
+// 🚀 START SERVER
+// =========================
 app.listen(process.env.PORT || 3000, () => {
- console.log("Server running");
+  console.log("Server running");
 });
